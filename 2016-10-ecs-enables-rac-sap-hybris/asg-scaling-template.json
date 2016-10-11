@@ -1,0 +1,103 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "ASG Scaling Stack",
+  "Parameters": {
+    "HybrisAdminCluster": {
+      "Default": "",
+      "ConstraintDescription": "",
+      "Type": "String",
+      "Description": "Hybris Admin ECS Cluster Resource"
+    },
+    "HybrisCluster": {
+      "Default": "",
+      "ConstraintDescription": "",
+      "Type": "String",
+      "Description": "Hybris ECS Cluster Resource"
+    }
+  },
+  "Resources": {
+    "ASGScalingLambdaInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "ASGScaling",
+            "Arn"
+          ]
+        },
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "ASGScalingScheduleRule",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "ASGScalingScheduleRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "State": "ENABLED",
+        "ScheduleExpression": "rate(5 minutes)",
+        "Description": "Cloudwatch Event schedule rule, runs every 5 min",
+        "Targets": [
+          {
+            "Input": {
+              "Fn::Join": [
+                "",
+                [
+                  "{",
+                  "\"ECSClusters\"",
+                  ":",
+                  "[\"",
+                  {
+                    "Ref": "HybrisCluster"
+                  },
+                  "\",\"",
+                  {
+                    "Ref": "HybrisAdminCluster"
+                  },
+                  "\"]",
+                  ",",
+                  "\"MinExtraCapacity\"",
+                  ":",
+                  1,
+                  ",",
+                  "\"MaxExtraCapacity\"",
+                  ":",
+                  1,
+                  "}"
+                ]
+              ]
+            },
+            "Id": "ASGScaling",
+            "Arn": {
+              "Fn::GetAtt": [
+                "ASGScaling",
+                "Arn"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ASGScaling": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": "devops-bucket",
+          "S3Key": "lambda/asg-scaling/asg_scaling.zip"
+        },
+        "Role": "arn:aws:iam::012345678912:role/ASGScalingRole",
+        "Description": "ASGScaling Lambda function",
+        "Timeout": 30,
+        "Handler": "asg_scaling.lambda_handler",
+        "Runtime": "python2.7",
+        "MemorySize": 128
+      }
+    }
+  },
+  "Outputs": {
+  }
+}
