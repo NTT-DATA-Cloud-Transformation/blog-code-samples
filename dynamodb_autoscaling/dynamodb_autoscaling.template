@@ -1,0 +1,215 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Example template to demonstrate dynamodb_autoscaling
+Parameters:
+  HashKeyElementName:
+    Description: HashType PrimaryKey Name
+    Type: String
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+    Default: 'pk'
+  HashKeyElementType:
+    Description: HashType PrimaryKey Type
+    Type: String
+    Default: N
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+  ReadCapacityUnitsMin:
+    Description: Min read throughput for Autoscaling ( scaling down )
+    Type: Number
+    Default: '5'
+    MinValue: '5'
+    MaxValue: '10000'
+    ConstraintDescription: must be between 5 and 10000
+  ReadCapacityUnitsMax:
+    Description: Max read throughput for autoscaling ( scaling up )
+    Type: Number
+    Default: '1000'
+    MinValue: '5'
+    MaxValue: '10000'
+    ConstraintDescription: must be between 5 and 10000
+  ReadCapacityUnits:
+    Description: Provisioned read throughput
+    Type: Number
+    Default: '10'
+    MinValue: '5'
+    MaxValue: '10000'
+    ConstraintDescription: must be between 5 and 10000
+  WriteCapacityUnits:
+    Description: Provisioned write throughput
+    Type: Number
+    Default: '10'
+    MinValue: '5'
+    MaxValue: '10000'
+    ConstraintDescription: must be between 5 and 10000
+  WriteCapacityUnitsMin:
+    Description: Min write throughput for Autoscaling ( scaling down )
+    Type: Number
+    Default: '5'
+    MinValue: '5'
+    MaxValue: '10000'
+    ConstraintDescription: must be between 5 and 10000
+  WriteCapacityUnitsMax:
+    Description: Max write throughput for autoscaling ( scaling up )
+    Type: Number
+    Default: '1000'
+    MinValue: '5'
+    MaxValue: '10000'
+    ConstraintDescription: must be between 5 and 10000
+  S3BucketName:
+    Description: S3 Path where lambdafunction zip file is pulled from
+    Type: String
+    Default: ''
+
+
+
+Resources:
+  myDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+      - AttributeName: !Ref HashKeyElementName
+        AttributeType: !Ref HashKeyElementType
+      KeySchema:
+      - AttributeName: !Ref HashKeyElementName
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: !Ref ReadCapacityUnits
+        WriteCapacityUnits: !Ref WriteCapacityUnits
+
+  DynamoDBAutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+            - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - application-autoscaling.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: DynamoDBAutoscaling
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:UpdateTable"
+                  - "cloudwatch:PutMetricAlarm"
+                  - "cloudwatch:DescribeAlarms"
+                  - "cloudwatch:DeleteAlarms"
+                Effect: "Allow"
+                Resource: "*"
+
+  DynamoDBWriteScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ScalableDimension: 'dynamodb:table:WriteCapacityUnits'
+      MinCapacity: !Ref WriteCapacityUnitsMin
+      MaxCapacity: !Ref WriteCapacityUnitsMax
+      ResourceId: !Sub table/${myDynamoDBTable}
+      RoleARN: !GetAtt DynamoDBAutoscalingRole.Arn
+      ServiceNamespace: dynamodb
+
+  DynamoDBReadScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ScalableDimension: 'dynamodb:table:ReadCapacityUnits'
+      MinCapacity: !Ref ReadCapacityUnitsMin
+      MaxCapacity: !Ref ReadCapacityUnitsMax
+      ResourceId: !Sub table/${myDynamoDBTable}
+      RoleARN: !GetAtt DynamoDBAutoscalingRole.Arn
+      ServiceNamespace: dynamodb
+
+
+  DynamoDBWriteScalingPolicy:
+    Type: "Custom::DynamoDBScalingPolicy"
+    Properties:
+      ServiceToken: !GetAtt PutTargetScalingLambda.Arn
+      PolicyName: Write Scaling POlicy
+      ResourceId: !Sub table/${myDynamoDBTable}
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 60
+        TargetValue: 30.0
+    DependsOn: DynamoDBWriteScalableTarget
+
+  DynamoDBReadScalingPolicy:
+    Type: "Custom::DynamoDBScalingPolicy"
+    Properties:
+      ServiceToken: !GetAtt PutTargetScalingLambda.Arn
+      PolicyName: Read Scaling POlicy
+      ResourceId: !Sub table/${myDynamoDBTable}
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 60
+        TargetValue: 30.0
+    DependsOn: DynamoDBReadScalableTarget
+
+  LambdaExecCommonRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /Common/Lambda/
+      Policies:
+      - PolicyName: CreateDynamoDBScalingPOlicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action:
+            - logs:CreateLogGroup*
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+            Effect: Allow
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess']
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+  PutTargetScalingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Custom resource to put DynamoDB Autoscaling policies
+      MemorySize: 128
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - LambdaExecCommonRole
+        - Arn
+      Timeout: 50
+      Runtime: python2.7
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: lambda_functions/dynamodb_autoscaling.zip
+
+Outputs:
+  TableName:
+    Value: !Ref myDynamoDBTable
+    Description: Table name of the newly created DynamoDB table
+  DynamoDBWriteScalableTarget:
+    Value: !Ref DynamoDBWriteScalableTarget
+    Description: logical ID of the Write scalable target
+  DynamoDBReadScalableTarget:
+    Value: !Ref DynamoDBReadScalableTarget
+    Description: logical ID of the Read scalable target
+  DynamoDBWriteScalingPolicy:
+    Value: !GetAtt DynamoDBWriteScalingPolicy.PolicyARN
+    Description: Arn for the write throughput scaling policy
+  DynamoDBReadScalingPolicy:
+    Value: !GetAtt DynamoDBReadScalingPolicy.PolicyARN
+    Description: Arn for the read throughput scaling policy

@@ -1,0 +1,3 @@
+## Cloudformation sample template for DynamoDB autoscaling
+
+This directory contains a [sample cloudformation template](dynamodb_autoscaling.template) to demonstrate the new [autoscaling](https://aws.amazon.com/blogs/aws/auto-scale-dynamodb-with-dynamic-dynamodb/) feature for DynamoDB. This template creates a custom resource to create scaling policies as they are not yet supported in CloudFormation. The lambda function for the custom resource is provided within the [lambda_function](lambda_function) directory.
