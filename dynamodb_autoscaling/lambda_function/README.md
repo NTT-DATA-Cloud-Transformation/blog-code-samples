@@ -12,3 +12,6 @@ zip -r dynamodb_autoscaling.zip .
 
 ### Upload the file to an s3 bucket 
 `aws s3 cp dynamodb_autoscaling.zip s3://<s3_bucket_name>/lambda_functions/dynamodb_autoscaling.zip`
+
+
+***Note:*** The python code for [cfnresponse.py](cfnresponse.py) is the one provided by AWS as part of their [documentation](http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-lambda-function-code.html#cfn-lambda-function-code-cfnresponsemodule).
