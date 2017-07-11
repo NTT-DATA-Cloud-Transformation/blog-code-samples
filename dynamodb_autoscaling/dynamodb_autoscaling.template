@@ -62,7 +62,7 @@ Parameters:
   S3BucketName:
     Description: S3 Path where lambdafunction zip file is pulled from
     Type: String
-    Default: ''
+    Default: 'flux7-bootstrap-devops'
 
 
 
@@ -128,74 +128,30 @@ Resources:
 
 
   DynamoDBWriteScalingPolicy:
-    Type: "Custom::DynamoDBScalingPolicy"
+    Type: "AWS::ApplicationAutoScaling::ScalingPolicy"
     Properties:
-      ServiceToken: !GetAtt PutTargetScalingLambda.Arn
-      PolicyName: Write Scaling POlicy
-      ResourceId: !Sub table/${myDynamoDBTable}
-      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      PolicyName: Write Scaling Policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref DynamoDBWriteScalableTarget
       TargetTrackingScalingPolicyConfiguration:
         PredefinedMetricSpecification:
           PredefinedMetricType: DynamoDBWriteCapacityUtilization
         ScaleOutCooldown: 60
         ScaleInCooldown: 60
         TargetValue: 30.0
-    DependsOn: DynamoDBWriteScalableTarget
 
   DynamoDBReadScalingPolicy:
-    Type: "Custom::DynamoDBScalingPolicy"
+    Type: "AWS::ApplicationAutoScaling::ScalingPolicy"
     Properties:
-      ServiceToken: !GetAtt PutTargetScalingLambda.Arn
-      PolicyName: Read Scaling POlicy
-      ResourceId: !Sub table/${myDynamoDBTable}
-      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      PolicyName: Read Scaling Policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref DynamoDBReadScalableTarget
       TargetTrackingScalingPolicyConfiguration:
         PredefinedMetricSpecification:
           PredefinedMetricType: DynamoDBReadCapacityUtilization
         ScaleOutCooldown: 60
         ScaleInCooldown: 60
         TargetValue: 30.0
-    DependsOn: DynamoDBReadScalableTarget
-
-  LambdaExecCommonRole:
-    Type: AWS::IAM::Role
-    Properties:
-      Path: /Common/Lambda/
-      Policies:
-      - PolicyName: CreateDynamoDBScalingPOlicy
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Action:
-            - logs:CreateLogGroup*
-            - logs:CreateLogStream
-            - logs:PutLogEvents
-            Resource: arn:aws:logs:*:*:*
-            Effect: Allow
-      ManagedPolicyArns: ['arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess']
-      AssumeRolePolicyDocument:
-        Statement:
-        - Action:
-          - sts:AssumeRole
-          Effect: Allow
-          Principal:
-            Service:
-            - lambda.amazonaws.com
-  PutTargetScalingLambda:
-    Type: AWS::Lambda::Function
-    Properties:
-      Description: Custom resource to put DynamoDB Autoscaling policies
-      MemorySize: 128
-      Handler: index.handler
-      Role:
-        Fn::GetAtt:
-        - LambdaExecCommonRole
-        - Arn
-      Timeout: 50
-      Runtime: python2.7
-      Code:
-        S3Bucket: !Ref S3BucketName
-        S3Key: lambda_functions/dynamodb_autoscaling.zip
 
 Outputs:
   TableName:
@@ -208,8 +164,8 @@ Outputs:
     Value: !Ref DynamoDBReadScalableTarget
     Description: logical ID of the Read scalable target
   DynamoDBWriteScalingPolicy:
-    Value: !GetAtt DynamoDBWriteScalingPolicy.PolicyARN
+    Value: !Ref DynamoDBWriteScalingPolicy
     Description: Arn for the write throughput scaling policy
   DynamoDBReadScalingPolicy:
-    Value: !GetAtt DynamoDBReadScalingPolicy.PolicyARN
+    Value: !Ref DynamoDBReadScalingPolicy
     Description: Arn for the read throughput scaling policy
